@@ -7,7 +7,7 @@ import time
 # Erzeugt das Hauptfenster der Anwendung
 fenster = tk.Tk()
 fenster.title("Apraxie-Screening") # Titel in der Fensterleiste
-fenster.geometry("800x600") # Startgröße des Fensters
+fenster.geometry("1100x800") # Startgröße des Fensters
 
 # Anleitung für die Testleitung
 
@@ -349,7 +349,7 @@ def naechster_frame():
     erfolgreich, frame = video_capture.read()
 
     if erfolgreich:
-        frame = cv2.resize(frame, (640, 360))
+        frame = cv2.resize(frame, (800, 450))
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         bild = Image.fromarray(frame)
         bild_tk = ImageTk.PhotoImage(image=bild)
@@ -376,19 +376,55 @@ button_video_replay.pack_forget()
 
 def naechstes_video():
     """Wird bei Klick auf 'Weiter' (Video-Phase) aufgerufen, zeigt das nächste Video oder beendet das Screening."""
-    global aktueller_video_index
+    global aktueller_video_index, frame_callback_id, video_capture
+
     aktueller_video_index = aktueller_video_index + 1
     if aktueller_video_index < len(video_ids):
         zeige_video()
     else:
-        print("Alle Videos gezeigt - Screening beendet")
+        # Laufende Wiedergabe sauber stoppen
+        if frame_callback_id is not None:
+            fenster.after_cancel(frame_callback_id)
+            frame_callback_id = None
+        if video_capture is not None:
+            video_capture.release()
+            video_capture = None
+
+        # Video-Bereich ausblenden
+        label_video.config(image="")
+        button_voriges_video.pack_forget()
+        button_video_replay.pack_forget()
+        button_naechstes_video.pack_forget()
+
+        # Abschlussbildschirm einblenden
+        label_ueberschrift_abschluss.pack()
+        label_abschluss.pack()
+        button_neustart.pack()
 
 def voriges_video():
-    """Wird bei Klick auf 'Zurück' (Video-Phase) aufgerufen, zeigt das vorherige Video."""
-    global aktueller_video_index
+    """Zeigt das vorherige Video oder springt beim ersten Video zur Instruktionsseite der Videos."""
+    global aktueller_video_index, frame_callback_id, video_capture
     if aktueller_video_index > 0:
         aktueller_video_index = aktueller_video_index - 1
         zeige_video()
+    else:
+        # Laufende Wiedergabe sauber stoppen
+        if frame_callback_id is not None:
+            fenster.after_cancel(frame_callback_id)
+            frame_callback_id = None
+        if video_capture is not None:
+            video_capture.release()
+            video_capture = None
+        
+        label_video.config(image="")
+        button_voriges_video.pack_forget()
+        button_video_replay.pack_forget()
+        button_naechstes_video.pack_forget()
+
+        label_ueberschrift_videos.pack()
+        label_hinweis_videos.pack()
+        button_zurueck_zu_fotos.pack()
+        button_weiter_zu_videos.pack()
     
 button_voriges_video = tk.Button(fenster, text="Zurück", command=voriges_video)
 button_voriges_video.pack()
@@ -398,5 +434,47 @@ button_naechstes_video = tk.Button(fenster, text="Weiter", command=naechstes_vid
 button_naechstes_video.pack()
 button_naechstes_video.pack_forget()
 # Startet die Warteschleife - hält das Fenster offen und reagiert auf Eingaben
+
+# Abschlussbildschirm
+
+label_ueberschrift_abschluss = tk.Label(fenster, text="Screening beendet.", font=("Calibri", 18, "bold"), padx=20, pady=10)
+label_ueberschrift_abschluss.pack()
+label_ueberschrift_abschluss.pack_forget()
+
+abschlusstext = """Das Apraxie-Screening der unteren Extremitäten ist abgeschlossen.
+
+Alle Objektfotos und Bewegungsvideos wurden gezeigt."""
+
+label_abschluss = tk.Label(fenster, text=abschlusstext, justify="left", padx=20, pady=20, font=("Calibri", 12))
+label_abschluss.pack()
+label_abschluss.pack_forget()
+
+def neustart_klick():
+    """Setzt das Screening zurück auf den Anfang für den nächsten Patienten."""
+    global aktueller_index, aktueller_video_index, frame_callback_id, video_capture
+
+    # Laufende Wiedergabe sauber stoppen (falls noch etwas läuft)
+    if frame_callback_id is not None:
+        fenster.after_cancel(frame_callback_id)
+        frame_callback_id = None
+    if video_capture is not None:
+        video_capture.release()
+        video_capture = None
+
+    aktueller_index = 0
+    aktueller_video_index = 0
+
+    label_ueberschrift_abschluss.pack_forget()
+    label_abschluss.pack_forget()
+    button_neustart.pack_forget()
+
+    label_fuss.pack()
+    radio_links.pack()
+    radio_rechts.pack()
+    button_weiter.pack()
+
+button_neustart = tk.Button(fenster, text="Neue*r Patient*in", command=neustart_klick)
+button_neustart.pack()
+button_neustart.pack_forget()
 
 fenster.mainloop()
