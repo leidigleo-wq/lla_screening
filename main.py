@@ -1,27 +1,58 @@
-# Tkinter-Modul laden, Kurzform "tk" für spätere Befehle
-import tkinter as tk
-import cv2
-from PIL import Image, ImageTk
-import time
+import tkinter as tk            # lädt das Tkinter-Modul für grafische Oberfläche. Kurzform tk.
+import cv2                      # lädt opencv-python. Für Öffnen und Auslesen der Videos
+from PIL import Image, ImageTk  # lädt zwei Werkzeuge aus Pillow. Für sauberes Abspielen der Videos.
+import time                     # Zeitmessung der Videowiedergabe. Für eine flüssige, realistische Abspielgeschwindigkeit
+import pygame                   # Wird für die Audio-Wiedergabe der Instruktionen gebraucht.
 
 # Erzeugt das Hauptfenster der Anwendung
 fenster = tk.Tk()
-fenster.title("Apraxie-Screening") # Titel in der Fensterleiste
-fenster.geometry("1100x800") # Startgröße des Fensters
+fenster.title("Apraxie-Screening")  # Titel in der Fensterleiste
+fenster.geometry("1100x800")        # Startgröße des Fensters
+pygame.mixer.init()                 # startet das Audio-System von pygame
 
-# Anleitung für die Testleitung
+# Audio für Instruktionsseiten
+
+pygame.mixer.music.load("assets/audio/instruktionen.mp3")
+
+audio_stop_id = None
+
+def spiele_audio(seiten_key):
+    """Spielt den Audio-Abschnitt für die angegebene Instruktionsseite ab"""
+    global audio_stop_id
+
+    if audio_stop_id is not None:
+        fenster.after_cancel(audio_stop_id)
+        audio_stop_id = None
+    pygame.mixer.music.stop()
+
+    start, ende = audio_zeitstempel[seiten_key]
+    dauer_ms = int((ende - start) * 1000)
+
+    pygame.mixer.music.play(start=start)
+    audio_stop_id = fenster.after(dauer_ms, pygame.mixer.music.stop)
+
+def stoppe_audio():
+    """Bricht eine laufende Audio-Wiedergabe ab, z.B. beim Verlassen einer Instruktionsseite."""
+    global audio_stop_id
+    if audio_stop_id is not None:
+        fenster.after_cancel(audio_stop_id)
+        audio_stop_id = None
+    pygame.mixer.music.stop()
+
+# Anleitung für die Testleitung am Anfang
 
 label_ueberschrift = tk.Label(fenster, text="Instruktion für die Testleitung", font=("Calibri", 18, "bold"), padx=20, pady=10)
 label_ueberschrift.pack()
 label_ueberschrift.pack_forget()
 
 anleitungstext = """
+Positionieren Sie den Laptop so, dass sowohl Testleitung als auch der*die Patient*in den Bildschirm
+gut wahrnehmen können.
 
 Das Screening wird im Sitzen durchgeführt. Platzieren Sie den Stuhl des*der Patient*in gegenüber
-dem Stuhl der Testleitung mit ausreichend Abstand. Positionieren Sie den Laptop so, dass sowohl
-Sie als auch der*die Patient*in den Bildschirm gut wahrnehmen können. Achten Sie darauf, dass
-genügend Freiraum zum Tisch besteht, sodass die Bein- und Fußbewegungen gut sichtbar und
-nicht eingeschränkt sind.
+dem Stuhl der Testleitung mit ausreichend Abstand. Achten Sie darauf, dass genügend Freiraum zum
+Tisch besteht, sodass die Bein- und Fußbewegungen gut sichtbar und nicht eingeschränkt sind.
+
 Der*Die Patient*in zieht die Schuhe aus; Socken können getragen werden. Die Ausgangsposition
 ist eine hüftbreite Stellung der Beine. Der*Die Patient*in sitzt möglichst weit vorne auf
 dem Stuhl, mit den Füßen flach auf dem Boden. Die Arme liegen locker auf dem Schoß oder, wenn
@@ -34,7 +65,8 @@ label_anleitung.pack()
 label_anleitung.pack_forget()
 
 def zurueck_zu_formular_von_anleitung_klick():
-    """Blendet die Anleitung aus und zeigt wieder das Formular."""
+    """Blendet die Anleitung aus und zeigt wieder das Formular, mit dem man den dominanten Fuß auswählt."""
+    stoppe_audio()
     label_ueberschrift.pack_forget()
     label_anleitung.pack_forget()
     button_zurueck_zu_formular_anleitung.pack_forget()
@@ -46,17 +78,14 @@ def zurueck_zu_formular_von_anleitung_klick():
     button_weiter.pack()
 
 def start_klick():
-    """Blendet die Anleitung aus und zeigt die Hinweisseite vor den Fotos."""
-    label_ueberschrift.pack()
+    """Blendet die Anleitung für die Testleitung aus und blendet die erste Instruktion für die teilnehmende Person ein."""
+    stoppe_audio()
     label_ueberschrift.pack_forget()
     label_anleitung.pack_forget()
     button_zurueck_zu_formular_anleitung.pack_forget()
     button_start.pack_forget()
 
-    label_ueberschrift_fotos.pack()
-    label_hinweis_fotos.pack()
-    button_zurueck_zu_formular.pack()
-    button_weiter_zu_fotos.pack()
+    zeige_testblock(0)
 
 button_zurueck_zu_formular_anleitung = tk.Button(fenster, text="Zurück", command=zurueck_zu_formular_von_anleitung_klick)
 button_zurueck_zu_formular_anleitung.pack()
@@ -66,10 +95,10 @@ button_start = tk.Button(fenster, text="Start", command=start_klick)
 button_start.pack()
 button_start.pack_forget()
 
-## Merkt sich, welcher Fuß aktuell ausgewählt ist (Standard: Links)
+# Merkt sich, welcher Fuß aktuell ausgewählt ist (Standard: Links)
 fuss_variable = tk.StringVar(value="links")
 
-## Beschriftung und Auswahlmöglichkeiten für den dominanten Fuß
+# Beschriftung und Auswahlmöglichkeiten für den dominanten Fuß
 label_fuss = tk.Label(fenster, text="Dominanter Fuß: ")
 label_fuss.pack()
 
@@ -79,56 +108,10 @@ radio_links.pack()
 radio_rechts = tk.Radiobutton(fenster, text="rechts", variable=fuss_variable, value="rechts")
 radio_rechts.pack()
 
-# Hinweistext vor den Objektfotos
-label_ueberschrift_fotos = tk.Label(fenster, text="Instruktion", font=("Calibri", 18, "bold"), padx=20, pady=10)
-
-hinweistext_fotos = """
-
-Bitte zeigen Sie mit Ihrem dominanten Bein und dominanten Fuß, wie man diesen Gegenstand
-benutzt. Falls die korrekte Ausführung der Bewegung auch die Ausrichtung des Fußes erfordert,
-machen Sie bitte auch die passende Fußbewegung."""
-
-label_hinweis_fotos = tk.Label(fenster, text=hinweistext_fotos, justify="left", padx=20, pady=20, font=("Calibri", 14))
-label_hinweis_fotos.pack()
-label_hinweis_fotos.pack_forget()
-
-def zurueck_zu_anleitung_von_fotos_klick():
-    """Blendet die Instruktion vor den Fotos aus und zeigt wieder die Anleitung."""
-    label_ueberschrift_fotos.pack_forget()
-    label_hinweis_fotos.pack_forget()
-    button_zurueck_zu_formular.pack_forget()
-    button_weiter_zu_fotos.pack_forget()
-
-    label_ueberschrift.pack()
-    label_anleitung.pack()
-    button_zurueck_zu_formular_anleitung.pack()
-    button_start.pack()
-
-def weiter_zu_fotos_klick():
-    """Blendet den Hinweistext aus und startet die Fotos"""
-    label_ueberschrift_fotos.pack_forget()
-    label_hinweis_fotos.pack_forget()
-    button_zurueck_zu_formular.pack_forget()
-    button_weiter_zu_fotos.pack_forget()
-
-    button_voriges_foto.pack()
-    button_naechstes_foto.pack()
-    zeige_foto()
-
-# Button, der zurück zur Startseite führt
-button_zurueck_zu_formular = tk.Button(fenster, text="Zurück", command=zurueck_zu_anleitung_von_fotos_klick)
-button_zurueck_zu_formular.pack()
-button_zurueck_zu_formular.pack_forget()
-
-# Button, der zu den Fotos weiterleitet
-button_weiter_zu_fotos = tk.Button(fenster, text="Weiter", command=weiter_zu_fotos_klick)
-button_weiter_zu_fotos.pack()
-button_weiter_zu_fotos.pack_forget()
-
-# Liste aller Objektfotos in der Reihenfolge, in der sie gezeigt werden
+# Liste aller Objektfotos in der Reihenfolge, in der sie gezeigt werden. Nummerierung der Dateien stimmt nicht mit gezeigter Reihenfolge überein.
 objekt_fotos = [
-    "assets/objekte/02_Igelball.png",
-    "assets/objekte/01_Fussball.png",
+    "assets/objekte/01_Igelball.png",
+    "assets/objekte/02_Fussball.png",
     "assets/objekte/03_Tretroller.png",
     "assets/objekte/04_Fussluftpumpe.png",
     "assets/objekte/05_Tretmuelleimer.png",
@@ -144,7 +127,7 @@ objekt_fotos = [
 # Zähler, der sich merkt, beim wievielten Foto wir gerade sind (Start: 0 = erstes Foto)
 aktueller_index = 0
 
-# Leeres Label, das später jeweils das aktuelle Foto anzeigt
+# Leeres Label, das das jeweils aktuelle Foto anzeigt
 label_bild = tk.Label(fenster)
 label_bild.pack()
 
@@ -152,56 +135,47 @@ def zeige_foto():
     """Lädt das Foto an der aktuellen Zähler-Position und zeigt es im Label an."""
     global bild_referenz
     pfad = objekt_fotos[aktueller_index]
-    bild_referenz = tk.PhotoImage(file=pfad) # Bild laden
-    bild_referenz = bild_referenz.subsample(2, 2) # verkleinert auf 1/2 der Originalgröße
-    label_bild.config(image=bild_referenz) # Bild ins Label einsetzen
+    bild_referenz = tk.PhotoImage(file=pfad)        # Bild laden
+    bild_referenz = bild_referenz.subsample(2, 2)   # verkleinert auf 1/2 der Originalgröße
+    label_bild.config(image=bild_referenz)          # Bild ins Label einsetzen
 
 def naechstes_foto():
-    """Wird bei Klick auf 'Weiter' (Fotos-Phase) aufgerufen, zeigt das nächste Foto oder die Hinweisseite vor den Videos."""
+    """Button-Funktion. Zeigt das nächste Foto, oder springt zur nächsten Testblock."""
     global aktueller_index
     aktueller_index = aktueller_index + 1
-    if aktueller_index < len(objekt_fotos):
+    testblock = testbloecke[aktueller_testblock]
+    if aktueller_index <= testblock["ende"]:
         zeige_foto()
     else:
-        # Fotos-Bereich ausblenden
         label_bild.config(image="")
         button_voriges_foto.pack_forget()
         button_naechstes_foto.pack_forget()
-
-        # Hinweisseite vor den Videos einblenden
-        label_ueberschrift_videos.pack()
-        label_hinweis_videos.pack()
-        button_zurueck_zu_fotos.pack()
-        button_weiter_zu_videos.pack()
+        zeige_testblock(aktueller_testblock + 1)
 
 def voriges_foto():
-    """Wird bei Klick auf 'Zurück' aufgerufen, zeigt das vorherige Foto."""
+    """Button-Funktion. Zeigt das vorherige Foto, oder springt zurück zur Instruktionsseite für Pantomime des Objektgebrauchs."""
     global aktueller_index
-    if aktueller_index > 0:
+    testblock = testbloecke[aktueller_testblock]
+    if aktueller_index > testblock["start"]:
         aktueller_index = aktueller_index - 1
         zeige_foto()
     else:
-        # von erstem Foto zurück zu Instruktion Fotos
         label_bild.config(image="")
         button_voriges_foto.pack_forget()
         button_naechstes_foto.pack_forget()
+        zeige_testblock(aktueller_testblock)
 
-        label_ueberschrift_fotos.pack()
-        label_hinweis_fotos.pack() # Hinweisseite statt Formular
-        button_zurueck_zu_formular.pack()
-        button_weiter_zu_fotos.pack()
-
-# Next-Button für die Foto-Phase
+# Weiter-Button für die Foto-Phase
 button_naechstes_foto = tk.Button(fenster, text="Weiter", command=naechstes_foto)
-button_naechstes_foto.pack()
-button_naechstes_foto.pack_forget() # direkt wieder verstecken
+button_naechstes_foto.pack()        # einmal "registrieren", damit Tkinter die Platzierung kennt
+button_naechstes_foto.pack_forget() # sofort wieder verstecken, bis die Fotos-Phase beginnt
 
-# Back-Button für die Foto-Phase
+# Zurück-Button für die Foto-Phase
 button_voriges_foto = tk.Button(fenster, text="Zurück", command=voriges_foto)
-button_voriges_foto.pack()
-button_voriges_foto.pack_forget()
+button_voriges_foto.pack()          # einmal registrieren, damit Tkinter die Platzierung kennt
+button_voriges_foto.pack_forget()   # sofort wieder verstecken, bis die Fotos-Phase beginnt
 
-# Funktion, die beim Klick auf "Weiter" ausgeführt wird
+# Funktion, die beim Klick auf "Weiter" beim Fuß-Formular ausgeführt wird
 def weiter_klick():
     """Liest den dominanten Fuß aus und zeigt die Anleitung für die Testleitung."""
     print("Dominanter Fuß:", fuss_variable.get())
@@ -211,68 +185,18 @@ def weiter_klick():
     radio_links.pack_forget()
     radio_rechts.pack_forget()
     button_weiter.pack_forget()
+    spiele_audio("Anleitung Testleitung")
 
     # Anleitungsseite einblenden
     label_ueberschrift.pack()
     label_anleitung.pack()
     button_zurueck_zu_formular_anleitung.pack()
     button_start.pack()
+    spiele_audio("Anleitung Testleitung")
 
 # Button, der die obige Funktion beim Klick aufruft
 button_weiter = tk.Button(fenster, text="Weiter", command=weiter_klick)
 button_weiter.pack()
-
-# Zwischenseite: Hinweistext vor den Bewegungsvideos
-
-label_ueberschrift_videos = tk.Label(fenster, text="Instruktion", font=("Arial", 16, "bold"), padx=20, pady=10)
-label_ueberschrift_videos.pack()
-label_ueberschrift_videos.pack_forget()
-
-hinweistext_videos = """
-Bitte führen Sie mit Ihrem dominanten Bein und dominanten Fuß möglichst genau die Bewegung
-aus, die Sie auf dem Bildschirm sehen. Führen Sie die Bewegungen spiegelbildlich zum im Video
-gezeigten Ablauf aus. Jede Bewegung beginnt und endet in der Ausgangsposition (hüftbreite
-Beinposition). Beginnen Sie mit der Imitation erst, wenn im Video die Ausgangsposition wieder
-eingenommen wurde. Achten Sie dabei genau auf die Einzelheiten der Bewegungen sowie auf die
-Anzahl der Wiederholungen."""
-
-label_hinweis_videos = tk.Label(fenster, text=hinweistext_videos, justify="left", padx=20, pady=20, font=("Calibri", 14))
-label_hinweis_videos.pack()
-label_hinweis_videos.pack_forget()
-
-def zurueck_zu_fotos_von_videos_klick():
-    """Blendet die Hinweisseite aus und zeigt wieder das letzte Foto."""
-    global aktueller_index
-    label_ueberschrift_videos.pack_forget()
-    label_hinweis_videos.pack_forget()
-    button_zurueck_zu_fotos.pack_forget()
-    button_weiter_zu_videos.pack_forget()
-
-    aktueller_index = len(objekt_fotos) - 1
-    button_voriges_foto.pack()
-    button_naechstes_foto.pack()
-    zeige_foto()
-
-def weiter_zu_videos_klick():
-    """Blendet die Hinweisseite aus und startet die Videos."""
-    label_ueberschrift_videos.pack_forget()
-    label_hinweis_videos.pack_forget()
-    button_zurueck_zu_fotos.pack_forget()
-    button_weiter_zu_videos.pack_forget()
-
-    label_video.pack()
-    button_voriges_video.pack()
-    button_video_replay.pack()
-    button_naechstes_video.pack()
-    zeige_video()
-
-button_zurueck_zu_fotos = tk.Button(fenster, text="Zurück", command=zurueck_zu_fotos_von_videos_klick)
-button_zurueck_zu_fotos.pack()
-button_zurueck_zu_fotos.pack_forget()
-
-button_weiter_zu_videos = tk.Button(fenster, text="Weiter", command=weiter_zu_videos_klick)
-button_weiter_zu_videos.pack()
-button_weiter_zu_videos.pack_forget()
 
 # Bewegungsvideos
 
@@ -334,7 +258,7 @@ def zeige_video():
     pfad = video_pfad(video_id)
     video_capture = cv2.VideoCapture(pfad)
 
-    """sorgt dafür, dass Video in tatsächlicher Framerate ausgelesen wird."""
+    # sorgt dafür, dass Video in tatsächlicher Framerate ausgelesen wird.
     global video_delay
     fps = video_capture.get(cv2.CAP_PROP_FPS)
     video_delay = int(1000 / fps)
@@ -357,7 +281,7 @@ def naechster_frame():
         label_video.config(image=bild_tk)
 
         dauer = (time.time() - start) * 1000
-        verbleibende_wartezeit = max(1, video_delay - int(dauer)) # zieht die tatsächlich schon verbrauchte Verarbeitungszeit von der Ziel-Wartezeit ab
+        verbleibende_wartezeit = max(1, video_delay - int(dauer))   # zieht die tatsächlich schon verbrauchte Verarbeitungszeit von der Ziel-Wartezeit ab
         frame_callback_id = fenster.after(verbleibende_wartezeit, naechster_frame)
 
 def video_replay():
@@ -375,14 +299,13 @@ button_video_replay.pack()
 button_video_replay.pack_forget()
 
 def naechstes_video():
-    """Wird bei Klick auf 'Weiter' (Video-Phase) aufgerufen, zeigt das nächste Video oder beendet das Screening."""
+    """Zeigt das nächste Video der aktuellen Testblock, springt zur nächsten Testblock, oder zeigt den Abschluss."""
     global aktueller_video_index, frame_callback_id, video_capture
-
     aktueller_video_index = aktueller_video_index + 1
-    if aktueller_video_index < len(video_ids):
+    testblock = testbloecke[aktueller_testblock]
+    if aktueller_video_index <= testblock["ende"]:
         zeige_video()
     else:
-        # Laufende Wiedergabe sauber stoppen
         if frame_callback_id is not None:
             fenster.after_cancel(frame_callback_id)
             frame_callback_id = None
@@ -390,41 +313,39 @@ def naechstes_video():
             video_capture.release()
             video_capture = None
 
-        # Video-Bereich ausblenden
         label_video.config(image="")
         button_voriges_video.pack_forget()
         button_video_replay.pack_forget()
         button_naechstes_video.pack_forget()
 
-        # Abschlussbildschirm einblenden
-        label_ueberschrift_abschluss.pack()
-        label_abschluss.pack()
-        button_neustart.pack()
+        if aktueller_testblock + 1 < len(testbloecke):
+            zeige_testblock(aktueller_testblock + 1)
+        else:
+            label_ueberschrift_abschluss.pack()
+            label_abschluss.pack()
+            button_neustart.pack()
+
 
 def voriges_video():
-    """Zeigt das vorherige Video oder springt beim ersten Video zur Instruktionsseite der Videos."""
+    """Zeigt das vorherige Video, oder springt zurück zur Instruktionsseite dieser Testblock."""
     global aktueller_video_index, frame_callback_id, video_capture
-    if aktueller_video_index > 0:
+    testblock = testbloecke[aktueller_testblock]
+    if aktueller_video_index > testblock["start"]:
         aktueller_video_index = aktueller_video_index - 1
         zeige_video()
     else:
-        # Laufende Wiedergabe sauber stoppen
         if frame_callback_id is not None:
             fenster.after_cancel(frame_callback_id)
             frame_callback_id = None
         if video_capture is not None:
             video_capture.release()
             video_capture = None
-        
+
         label_video.config(image="")
         button_voriges_video.pack_forget()
         button_video_replay.pack_forget()
         button_naechstes_video.pack_forget()
-
-        label_ueberschrift_videos.pack()
-        label_hinweis_videos.pack()
-        button_zurueck_zu_fotos.pack()
-        button_weiter_zu_videos.pack()
+        zeige_testblock(aktueller_testblock)
     
 button_voriges_video = tk.Button(fenster, text="Zurück", command=voriges_video)
 button_voriges_video.pack()
@@ -451,7 +372,7 @@ label_abschluss.pack_forget()
 
 def neustart_klick():
     """Setzt das Screening zurück auf den Anfang für den nächsten Patienten."""
-    global aktueller_index, aktueller_video_index, frame_callback_id, video_capture
+    global aktueller_index, aktueller_video_index, frame_callback_id, video_capture, aktueller_testblock
 
     # Laufende Wiedergabe sauber stoppen (falls noch etwas läuft)
     if frame_callback_id is not None:
@@ -463,6 +384,7 @@ def neustart_klick():
 
     aktueller_index = 0
     aktueller_video_index = 0
+    aktueller_testblock = 0
 
     label_ueberschrift_abschluss.pack_forget()
     label_abschluss.pack_forget()
@@ -476,5 +398,126 @@ def neustart_klick():
 button_neustart = tk.Button(fenster, text="Neue*r Patient*in", command=neustart_klick)
 button_neustart.pack()
 button_neustart.pack_forget()
+
+testbloecke = [
+    {"typ": "foto", "start": 0, "ende": 6, "titel": "Pantomime des Objektgebrauchs - Unilaterale Bewegungen",
+     "text": "Bitte zeigen Sie mit Ihrem dominanten Bein und dominanten Fuß, wie man diesen Gegenstand benutzt. Falls die korrekte Ausführung der Bewegung auch die Ausrichtung des Fußes erfordert, machen Sie bitte auch die passende Fußbewegung.\n\nDie für die Aufgabe relevanten Bewegungen betreffen ausschließlich die Beine. Armbewegungen sollen nicht demonstriert werden - lassen Sie diese bitte während des gesamten Tests entspannt auf Ihrem Schoß / den Armlehnen liegen.",
+     "audio": "Pantomime unilateral"},
+    {"typ": "foto", "start": 7, "ende": 11, "titel": "Pantomime des Objektgebrauchs - Bilaterale Bewegungen",
+     "text": "Die nächsten Objekte erfordern eine Bewegung beider Beine. Zeigen Sie weiterhin mit Ihren Beinen und Füßen, wie man die Gegenstände benutzt. Armbewegungen sind auch hier nicht Teil der Aufgabe und Ihre Arme können weiterhin auf Ihrem Schoß / den Armlehnen liegen bleiben.",
+     "audio": "Pantomime bilateral"},
+    {"typ": "video", "start": 0, "ende": 4, "titel": "Imitation von Gesten - Unilateral BL",
+     "text": "Bitte führen Sie mit Ihrem dominanten Bein und dominanten Fuß möglichst genau die Bewegung aus, die ich Ihnen vormache. Ich werde die Bewegung spiegelbildlich demonstrieren.\n\nJede Bewegung beginnt und endet in dieser Ausgangsposition. Beginnen Sie bitte mit der Imitation erst, nachdem ich diese Ausgangsposition wieder eingenommen habe. Achten Sie dabei genau auf die Einzelheiten der Bewegungen sowie auf die Anzahl der Wiederholungen.",
+     "audio": "bedeutungslos unilateral"},
+    {"typ": "video", "start": 5, "ende": 9, "titel": "Imitation von Gesten - Bilateral BL",
+     "text": "Die nächsten Bewegungen, die ich vormachen werde, beziehen beide Beine ein. Bitte machen Sie auch diese Bewegungen so genau wie möglich nach. Ich werde die Bewegung spiegelbildlich demonstrieren.\n\nJede Bewegung beginnt und endet wieder in dieser Ausgangsposition. Beginnen Sie bitte mit der Imitation erst, nachdem ich diese Ausgangsposition wieder eingenommen habe. Achten Sie dabei genau auf die Einzelheiten der Bewegungen sowie auf die Anzahl der Wiederholungen.",
+     "audio": "bedeutungslos bilateral"},
+    {"typ": "video", "start": 10, "ende": 14, "titel": "Imitation von Gesten - Unilateral BV",
+     "text": "Bitte führen Sie mit Ihrem dominanten Bein und dominanten Fuß möglichst genau die Bewegung aus, die ich Ihnen vormache. Ich werde die Bewegung spiegelbildlich demonstrieren.\n\nJede Bewegung beginnt und endet in dieser Ausgangsposition. Beginnen Sie bitte mit der Imitation erst, nachdem ich diese Ausgangsposition wieder eingenommen habe. Achten Sie dabei genau auf die Einzelheiten der Bewegungen sowie auf die Anzahl an Wiederholungen.",
+     "audio": "bedeutungsvoll unilateral"},
+    {"typ": "video", "start": 15, "ende": 19, "titel": "Imitation von Gesten - Unilateral BV",
+     "text": "Die nächsten Bewegungen, die ich vormachen werde, beziehen beide Beine ein. Bitte machen Sie auch diese Bewegungen so genau wie möglich nach. Ich werde die Bewegung spiegelbildlich demonstrieren.\n\nJede Bewegung beginnt und endet wieder in dieser Ausgangsposition. Beginnen Sie bitte mit der Imitation direkt, nachdem ich diese Ausgangsposition wieder eingenommen habe. Achten Sie dabei genau auf die Einzelheiten der Bewegungen.""",
+     "audio": "bedeutungsvoll bilateral"},
+]
+
+aktueller_testblock = 0
+
+# Abschnitte der Erklärungen für die jeweiligen Testblöcke
+
+audio_zeitstempel = {
+    "Anleitung Testleitung": (4, 57),
+    "Pantomime unilateral": (72, 105),
+    "Pantomime bilateral": (170, 191),
+    "bedeutungslos unilateral": (259, 292),
+    "bedeutungslos bilateral": (437, 472),
+    "bedeutungsvoll unilateral": (589, 621),
+    "bedeutungsvoll bilateral": (708, 743)
+}
+
+label_ueberschrift_testblock = tk.Label(fenster, font=("Calibri", 18, "bold"), padx=20, pady=10)
+label_ueberschrift_testblock.pack()
+label_ueberschrift_testblock.pack_forget()
+
+label_text_testblock = tk.Label(fenster, justify="left", padx=20, pady=20, font=("Calibri", 14), wraplength=700)
+label_text_testblock.pack()
+label_text_testblock.pack_forget()
+
+def zeige_testblock(nr):
+    """Zeigt die Instruktionsseite für den Testblock mit der angegebenen Nummer."""
+    global aktueller_testblock
+    aktueller_testblock = nr
+    testblock = testbloecke[nr]
+
+    label_ueberschrift_testblock.config(text=testblock["titel"])
+    label_text_testblock.config(text=testblock["text"])
+    label_ueberschrift_testblock.pack()
+    label_text_testblock.pack()
+    button_zurueck_testblock.pack()
+    button_weiter_testblock.pack()
+
+    spiele_audio(testblock["audio"])
+
+def weiter_von_testblock_klick():
+    """Startet die Fotos/Videos der aktuellen Testblock."""
+    global aktueller_index, aktueller_video_index
+    stoppe_audio()
+    testblock = testbloecke[aktueller_testblock]
+
+    label_ueberschrift_testblock.pack_forget()
+    label_text_testblock.pack_forget()
+    button_zurueck_testblock.pack_forget()
+    button_weiter_testblock.pack_forget()
+
+    if testblock["typ"] == "foto":
+        aktueller_index = testblock["start"]
+        button_voriges_foto.pack()
+        button_naechstes_foto.pack()
+        zeige_foto()
+    else:
+        aktueller_video_index = testblock["start"]
+        label_video.pack()
+        button_voriges_video.pack()
+        button_video_replay.pack()
+        button_naechstes_video.pack()
+        zeige_video()
+
+def zurueck_von_testblock_klick():
+    """Springt zum vorherigen Testblock (letztes Element) oder zur Anleitung zurück."""
+    global aktueller_index, aktueller_video_index, aktueller_testblock
+    stoppe_audio()
+
+    label_ueberschrift_testblock.pack_forget()
+    label_text_testblock.pack_forget()
+    button_zurueck_testblock.pack_forget()
+    button_weiter_testblock.pack_forget()
+
+    if aktueller_testblock == 0:
+        label_ueberschrift.pack()
+        label_anleitung.pack()
+        button_zurueck_zu_formular_anleitung.pack()
+        button_start.pack()
+        spiele_audio("Anleitung Testleitung")
+    else:
+        aktueller_testblock = aktueller_testblock - 1
+        vorherige = testbloecke[aktueller_testblock]
+        if vorherige["typ"] == "foto":
+            aktueller_index = vorherige["ende"]
+            button_voriges_foto.pack()
+            button_naechstes_foto.pack()
+            zeige_foto()
+        else:
+            aktueller_video_index = vorherige["ende"]
+            button_voriges_video.pack()
+            button_video_replay.pack()
+            button_naechstes_video.pack()
+            zeige_video()
+
+button_zurueck_testblock = tk.Button(fenster, text="Zurück", command=zurueck_von_testblock_klick)
+button_zurueck_testblock.pack()
+button_zurueck_testblock.pack_forget()
+
+button_weiter_testblock = tk.Button(fenster, text="Weiter", command=weiter_von_testblock_klick)
+button_weiter_testblock.pack()
+button_weiter_testblock.pack_forget()
 
 fenster.mainloop()
